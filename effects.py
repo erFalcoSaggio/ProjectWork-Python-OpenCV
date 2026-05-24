@@ -1,3 +1,4 @@
+# Falcari - effetti avanzati: face detection, overlay PNG, motion
 import cv2
 import numpy as np
 import os
@@ -14,6 +15,7 @@ _eye_cascade = cv2.CascadeClassifier(
 _png_cache = {}
 
 def _carica_png(path):
+    # legge un PNG con alpha e lo ritaglia al bbox dei pixel non trasparenti (cache)
     if path in _png_cache:
         return _png_cache[path]
     img = None
@@ -30,12 +32,14 @@ def _carica_png(path):
     return img
 
 def _png_aspect(path):
+    # restituisce il rapporto altezza/larghezza del PNG dopo il crop
     img = _carica_png(path)
     if img is None:
         return None
     return img.shape[0] / img.shape[1]
 
 def _sovrapponi_png(frame, path, x, y, w, h):
+    # disegna un PNG con trasparenza alle coordinate richieste
     if w <= 0 or h <= 0:
         return False
     img = _carica_png(path)
@@ -59,6 +63,7 @@ def _sovrapponi_png(frame, path, x, y, w, h):
     return True
 
 def _overlay_proporzionale(frame, path, cx, cy, target_w, ancora='center', fallback_ratio=1.0):
+    # posiziona il PNG mantenendo il suo aspect ratio dato un punto di ancoraggio
     ratio = _png_aspect(path)
     if ratio is None:
         return False
@@ -77,6 +82,7 @@ def _overlay_proporzionale(frame, path, cx, cy, target_w, ancora='center', fallb
     return _sovrapponi_png(frame, path, x, y, target_w, target_h)
 
 def sfondo_sfocato(frame, facce):
+    # sfoca tutto il frame tranne le ellissi delle facce rilevate
     sfocato = cv2.GaussianBlur(frame, (51, 51), 0)
     if len(facce) == 0:
         return sfocato
@@ -88,6 +94,7 @@ def sfondo_sfocato(frame, facce):
     return np.where(mask_3ch == 255, frame, sfocato)
 
 def _disegna_cilindro(frame, fx, fy, fw, fh):
+    # fallback grafico: cappello a cilindro classico
     nero = (15, 15, 15)
     rosso_band = (40, 40, 180)
 
@@ -114,6 +121,7 @@ def _disegna_cilindro(frame, fx, fy, fw, fh):
                   (crown_x + crown_w, brim_cy), rosso_band, -1)
 
 def cappello(frame, facce):
+    # sovrappone il cappello PNG sopra la testa (fallback: cilindro)
     path = os.path.join(ASSETS, "cappello.png")
     for (fx, fy, fw, fh) in facce:
         cx = fx + fw // 2
@@ -124,6 +132,7 @@ def cappello(frame, facce):
     return frame
 
 def _disegna_occhiali(frame, cx_l, cx_r, cy, raggio):
+    # fallback grafico: occhiali da sole rotondi
     lente = (15, 15, 15)
     rim = (70, 70, 70)
     riflesso = (200, 200, 200)
@@ -142,6 +151,7 @@ def _disegna_occhiali(frame, cx_l, cx_r, cy, raggio):
     cv2.circle(frame, (cx_r - raggio // 3, cy - raggio // 3), r_high, riflesso, -1)
 
 def occhiali(frame, facce):
+    # occhiali PNG all'altezza degli occhi rilevati (fallback disegnato)
     path = os.path.join(ASSETS, "occhiali.png")
     for (fx, fy, fw, fh) in facce:
         roi_gray = cv2.cvtColor(frame[fy:fy+fh, fx:fx+fw], cv2.COLOR_BGR2GRAY)
@@ -164,6 +174,7 @@ def occhiali(frame, facce):
     return frame
 
 def _disegna_baffi(frame, fx, fy, fw, fh):
+    # fallback grafico: baffi a manubrio
     colore = (25, 18, 12)
     highlight = (50, 35, 25)
 
@@ -196,6 +207,7 @@ def _disegna_baffi(frame, fx, fy, fw, fh):
              highlight, 1, cv2.LINE_AA)
 
 def baffi(frame, facce):
+    # baffi PNG sopra il labbro superiore (fallback: handlebar disegnato)
     path = os.path.join(ASSETS, "baffi.png")
     for (fx, fy, fw, fh) in facce:
         cx = fx + fw // 2
@@ -206,6 +218,7 @@ def baffi(frame, facce):
     return frame
 
 def barba(frame, facce):
+    # barba PNG ancorata al mento (fallback: ovale marrone)
     path = os.path.join(ASSETS, "barba.png")
     for (fx, fy, fw, fh) in facce:
         cx = fx + fw // 2
@@ -222,6 +235,7 @@ def barba(frame, facce):
     return frame
 
 def etichetta(frame, facce):
+    # scrive ETICHETTA sopra ogni faccia rilevata
     for (fx, fy, fw, _) in facce:
         scala = fw / 200.0
         spessore = max(1, int(scala * 2))
@@ -240,6 +254,7 @@ _charlie_face = None
 _kirk_cache = {}
 
 def charlie_kirk_audio_start():
+    # avvia in loop l'audio di Charlie Kirk
     try:
         import pygame
         if not pygame.mixer.get_init():
@@ -250,6 +265,7 @@ def charlie_kirk_audio_start():
         pass
 
 def charlie_kirk_audio_stop():
+    # ferma l'audio di Charlie Kirk
     try:
         import pygame
         if pygame.mixer.get_init():
@@ -258,6 +274,7 @@ def charlie_kirk_audio_stop():
         pass
 
 def _kirk_assets(w, h):
+    # cache della faccia di Charlie ridimensionata + maschera ellittica
     chiave = (w, h)
     if chiave in _kirk_cache:
         return _kirk_cache[chiave]
@@ -271,6 +288,7 @@ def _kirk_assets(w, h):
     return _kirk_cache[chiave]
 
 def charlie_kirk(frame, facce):
+    # sovrappone la faccia di Charlie Kirk con blend ellittico su ogni faccia
     global _charlie_face
     if _charlie_face is None:
         _charlie_face = cv2.imread(os.path.join(ASSETS, "charlie_face.png"))
@@ -299,6 +317,7 @@ _67_INPUT_W = 240
 _67_ts_ms = 0
 
 def _get_hand_detector():
+    # crea il detector MediaPipe in modalità VIDEO una sola volta
     global _hand_detector
     if _hand_detector is None:
         model_path = os.path.join(ASSETS, "hand_landmarker.task")
@@ -313,9 +332,11 @@ def _get_hand_detector():
     return _hand_detector
 
 def prewarm_hand_detector():
+    # carica il modello MediaPipe in anticipo per evitare lag al primo uso
     _get_hand_detector()
 
 def _disegna_numero(canvas, testo, cx, cy, size):
+    # numero stile meme: bianco con bordo nero spesso
     font = cv2.FONT_HERSHEY_DUPLEX
     scala = size / 60.0
     bordo = max(2, int(scala * 12))
@@ -326,6 +347,7 @@ def _disegna_numero(canvas, testo, cx, cy, size):
     cv2.putText(canvas, testo, (tx, ty), font, scala, (255, 255, 255), fill, cv2.LINE_AA)
 
 def effetto_67(frame, facce):
+    # mano destra → "6", mano sinistra → "7" (richiede MediaPipe)
     global _67_ultimo_risultato, _67_frame_count, _67_ts_ms
     h, w = frame.shape[:2]
     size = int(min(h, w) * 0.25)
@@ -353,6 +375,7 @@ def effetto_67(frame, facce):
     return frame
 
 def rilevamento_movimento(frame, prev_frame):
+    # tinge di rosso le zone che differiscono dal frame precedente
     if prev_frame is None:
         return frame
     f1 = cv2.GaussianBlur(prev_frame, (21, 21), 0)
@@ -368,6 +391,7 @@ def rilevamento_movimento(frame, prev_frame):
     return result
 
 def ghost_effect(frame, prev_frame):
+    # blend 70/30 tra frame corrente e precedente (effetto scia)
     if prev_frame is None:
         return frame
     return cv2.addWeighted(frame, 0.7, prev_frame, 0.3, 0)

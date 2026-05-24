@@ -1,2 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Output dell'app
 screenshot_*.jpg
 rec_*.mp4
+occhiali.jpg
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
