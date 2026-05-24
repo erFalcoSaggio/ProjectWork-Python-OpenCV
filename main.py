@@ -1,5 +1,3 @@
-# Falcari - loop principale: legge la webcam, applica il filtro corrente,
-# disegna l'interfaccia e gestisce i tasti.
 import cv2
 import time
 from datetime import datetime
@@ -8,14 +6,6 @@ import filters
 import effects
 from ui import disegna_hud
 
-# ---------------------------------------------------------------------------
-# Catalogo dei filtri.
-# Ogni voce: (nome mostrato, funzione, categoria).
-# La categoria decide quali parametri extra la funzione riceve:
-#   "normal" → solo frame                                  fn(frame)
-#   "face"   → frame + lista di facce rilevate             fn(frame, facce)
-#   "motion" → frame + frame precedente (grezzo)           fn(frame, prev)
-# ---------------------------------------------------------------------------
 FILTRI = [
     ("Normale",        filters.normale,               "normal"),
     ("Grigio",         filters.grigio,                "normal"),
@@ -37,6 +27,7 @@ FILTRI = [
     ("Cappello",       effects.cappello,              "face"),
     ("Occhiali",       effects.occhiali,              "face"),
     ("Baffi",          effects.baffi,                 "face"),
+    ("Barba",          effects.barba,                 "face"),
     ("Etichetta",      effects.etichetta,             "face"),
     ("Charlie Kirk",   effects.charlie_kirk,          "face"),
     ("67",             effects.effetto_67,            "face"),
@@ -45,19 +36,14 @@ FILTRI = [
 ]
 
 NOME_CHARLIE = "Charlie Kirk"
-AUTO_INTERVALLO = 3   # secondi tra un filtro e l'altro in modalità AUTO
+AUTO_INTERVALLO = 3
 
-# ---------------------------------------------------------------------------
-# Face detection: lavoriamo su un frame ridotto e solo 1 frame su N per
-# tenere alti gli FPS. Le coordinate vengono poi riscalate.
-# ---------------------------------------------------------------------------
 FACE_DETECT_OGNI = 4
 FACE_SCALE = 0.5
 
 _face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
-
 
 def rileva_facce(frame):
     h, w = frame.shape[:2]
@@ -68,12 +54,9 @@ def rileva_facce(frame):
     )
     if len(facce) == 0:
         return facce
-    # riporta le coordinate al frame originale
     return (facce / FACE_SCALE).astype(int)
 
-
 def applica_filtro(frame, prev_raw, facce, idx):
-    # esegue la funzione del filtro in base alla sua categoria
     fn = FILTRI[idx][1]
     categoria = FILTRI[idx][2]
     if categoria == "face":
@@ -82,9 +65,7 @@ def applica_filtro(frame, prev_raw, facce, idx):
         return fn(frame, prev_raw)
     return fn(frame)
 
-
 def gestisci_audio_charlie(nome_corrente, nome_precedente):
-    # avvia o ferma l'audio di Charlie Kirk quando si entra/esce dal filtro
     if nome_corrente == nome_precedente:
         return
     if nome_corrente == NOME_CHARLIE:
@@ -92,25 +73,21 @@ def gestisci_audio_charlie(nome_corrente, nome_precedente):
     elif nome_precedente == NOME_CHARLIE:
         effects.charlie_kirk_audio_stop()
 
-
 def avvia_registrazione(frame):
-    # crea un VideoWriter con timestamp; restituisce (writer, nome_file)
     h, w = frame.shape[:2]
     nome_file = datetime.now().strftime("rec_%Y%m%d_%H%M%S.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(nome_file, fourcc, 20.0, (w, h))
     return writer, nome_file
 
-
 def main():
-    # --- stato del loop ---
     filtro_idx = 0
-    filtro_precedente = ""       # per gestire l'audio di Charlie Kirk
+    filtro_precedente = ""
     auto_mode = False
     auto_last = time.time()
     fps = 0.0
     fps_prev = time.time()
-    prev_frame_raw = None        # frame grezzo precedente (per filtri "motion")
+    prev_frame_raw = None
     facce = []
     frame_count = 0
     registrazione = False
@@ -121,8 +98,6 @@ def main():
         print("Errore: impossibile aprire la webcam")
         return
 
-    # pre-carica MediaPipe (filtro "67") in modo che il primo ingresso nel
-    # filtro non blocchi il loop video con il caricamento del modello
     print("Carico il modello hand-tracking...")
     effects.prewarm_hand_detector()
 
@@ -131,21 +106,16 @@ def main():
         if not ret:
             break
 
-        # salva subito il frame grezzo: ci servirà al prossimo ciclo per i
-        # filtri di movimento (devono confrontare due frame originali)
         frame_raw = frame.copy()
 
-        # FPS istantaneo
         now = time.time()
         fps = 1.0 / (now - fps_prev + 1e-9)
         fps_prev = now
 
-        # modalità AUTO: cambia filtro ogni AUTO_INTERVALLO secondi
         if auto_mode and (now - auto_last) >= AUTO_INTERVALLO:
             filtro_idx = (filtro_idx + 1) % len(FILTRI)
             auto_last = now
 
-        # face detection ogni FACE_DETECT_OGNI frame (per non saturare la CPU)
         frame_count += 1
         if frame_count % FACE_DETECT_OGNI == 0:
             facce = rileva_facce(frame)
@@ -165,7 +135,6 @@ def main():
 
         cv2.imshow("Falcari Cam", frame)
 
-        # --- gestione tasti ---
         tasto = cv2.waitKey(1) & 0xFF
 
         if tasto == ord('q'):
@@ -192,10 +161,10 @@ def main():
             auto_last = now
             print(f"Modalità auto: {'ON' if auto_mode else 'OFF'}")
 
-        elif tasto in (81, ord('a')):   # freccia sinistra / A
+        elif tasto in (81, ord('a')):
             filtro_idx = (filtro_idx - 1) % len(FILTRI)
 
-        elif tasto in (83, ord('d')):   # freccia destra / D
+        elif tasto in (83, ord('d')):
             filtro_idx = (filtro_idx + 1) % len(FILTRI)
 
         elif ord('1') <= tasto <= ord('9'):
@@ -206,13 +175,11 @@ def main():
         elif tasto == ord('0') and len(FILTRI) >= 10:
             filtro_idx = 9
 
-    # cleanup all'uscita
     effects.charlie_kirk_audio_stop()
     if video_writer is not None:
         video_writer.release()
     cap.release()
     cv2.destroyAllWindows()
-
 
 if __name__ == "__main__":
     main()

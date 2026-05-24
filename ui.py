@@ -1,34 +1,26 @@
-# Falcari - interfaccia utente disegnata sopra il frame
 import cv2
 import numpy as np
 
-# Colore per categoria di filtro (BGR)
 COLORI_CATEGORIA = {
-    "normal": (255, 200, 80),   # azzurro
-    "face":   (120, 220, 120),  # verde
-    "motion": (80, 160, 255),   # arancio
+    "normal": (255, 200, 80),
+    "face":   (120, 220, 120),
+    "motion": (80, 160, 255),
 }
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
-
 def _pannello(frame, x, y, w, h, alpha=0.55):
-    # disegna un rettangolo scuro semitrasparente come sfondo per il testo
     overlay = frame.copy()
     cv2.rectangle(overlay, (x, y), (x + w, y + h), (20, 20, 20), -1)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
-
 def _testo_centrato(frame, testo, cx, cy, scala, colore, spessore=1):
-    # disegna del testo centrato orizzontalmente attorno a cx, baseline cy
     (tw, th), _ = cv2.getTextSize(testo, FONT, scala, spessore)
     cv2.putText(frame, testo, (cx - tw // 2, cy + th // 2),
                 FONT, scala, colore, spessore, cv2.LINE_AA)
     return tw, th
 
-
 def _chip(frame, x, y, testo, colore, attivo=True):
-    # disegna una "pill" colorata con un testo dentro; restituisce la larghezza usata
     scala = 0.5
     spessore = 1
     (tw, th), _ = cv2.getTextSize(testo, FONT, scala, spessore)
@@ -45,18 +37,14 @@ def _chip(frame, x, y, testo, colore, attivo=True):
                     FONT, scala, (180, 180, 180), spessore, cv2.LINE_AA)
     return w
 
-
 def _barra_stato(frame, w, fps_val, n_facce, registrazione, auto_mode):
-    # angolo in alto a destra: chip con stato corrente
     _pannello(frame, 0, 0, w, 44, alpha=0.45)
 
-    # logo a sinistra
     cv2.putText(frame, "FALCARI", (12, 28),
                 FONT, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(frame, "cam", (110, 28),
                 FONT, 0.55, (120, 200, 255), 1, cv2.LINE_AA)
 
-    # chip a destra, da destra verso sinistra
     x = w - 12
     chips = [
         (f"FPS {fps_val:4.1f}", (200, 200, 200), True),
@@ -75,39 +63,32 @@ def _barra_stato(frame, w, fps_val, n_facce, registrazione, auto_mode):
         _chip(frame, x, 10, testo, colore, attivo)
         x -= 6
 
-    # pallino REC lampeggiante (effetto pulsante)
     if registrazione:
         t = cv2.getTickCount() / cv2.getTickFrequency()
         if int(t * 2) % 2 == 0:
             cv2.circle(frame, (w - 18, 22), 5, (0, 0, 230), -1)
 
-
 def _pillola_filtro(frame, w, h, filtri, idx):
-    # mostra il filtro corrente in grande al centro, con i due adiacenti dim ai lati
     nome, _fn, categoria = filtri[idx]
     colore_cat = COLORI_CATEGORIA.get(categoria, (200, 200, 200))
 
-    # pannello centrale
     pill_h = 56
     pill_w = min(560, w - 80)
     pill_x = (w - pill_w) // 2
     pill_y = h - pill_h - 56
     _pannello(frame, pill_x, pill_y, pill_w, pill_h, alpha=0.6)
 
-    # bordo colorato in base alla categoria
     cv2.rectangle(frame, (pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h),
                   colore_cat, 2)
 
     cx = w // 2
     cy = pill_y + pill_h // 2
 
-    # frecce sinistra/destra
     cv2.putText(frame, "<", (pill_x + 14, cy + 8),
                 FONT, 0.9, (180, 180, 180), 2, cv2.LINE_AA)
     cv2.putText(frame, ">", (pill_x + pill_w - 28, cy + 8),
                 FONT, 0.9, (180, 180, 180), 2, cv2.LINE_AA)
 
-    # nomi precedente/successivo in piccolo e attenuati
     nome_prev = filtri[(idx - 1) % len(filtri)][0]
     nome_next = filtri[(idx + 1) % len(filtri)][0]
     cv2.putText(frame, nome_prev, (pill_x + 36, cy + 6),
@@ -116,14 +97,11 @@ def _pillola_filtro(frame, w, h, filtri, idx):
     cv2.putText(frame, nome_next, (pill_x + pill_w - 40 - tw_next, cy + 6),
                 FONT, 0.45, (140, 140, 140), 1, cv2.LINE_AA)
 
-    # nome del filtro attivo grande al centro
     _testo_centrato(frame, nome, cx, cy - 4, 0.85, (255, 255, 255), 2)
 
-    # indicatore "i / N" e categoria sotto al nome
     info = f"{idx + 1} / {len(filtri)}   {categoria.upper()}"
     _testo_centrato(frame, info, cx, cy + 18, 0.4, colore_cat, 1)
 
-    # mini progress bar sotto la pillola che indica la posizione tra tutti i filtri
     bar_y = pill_y + pill_h + 6
     bar_w = pill_w
     bar_x = pill_x
@@ -133,9 +111,7 @@ def _pillola_filtro(frame, w, h, filtri, idx):
     cv2.rectangle(frame, (bar_x, bar_y), (bar_x + pos_w, bar_y + 3),
                   colore_cat, -1)
 
-
 def _legenda_tasti(frame, w, h):
-    # barra sottile in basso con i tasti disponibili
     _pannello(frame, 0, h - 26, w, 26, alpha=0.55)
     tasti = [
         ("A/D", "filtro"),
@@ -148,7 +124,6 @@ def _legenda_tasti(frame, w, h):
     x = 12
     y = h - 8
     for tasto, descr in tasti:
-        # tasto in box, descrizione accanto
         (tw, th), _ = cv2.getTextSize(tasto, FONT, 0.42, 1)
         cv2.rectangle(frame, (x - 4, y - th - 6), (x + tw + 4, y + 4),
                       (90, 90, 90), 1)
@@ -160,10 +135,8 @@ def _legenda_tasti(frame, w, h):
         (dw, _), _ = cv2.getTextSize(descr, FONT, 0.42, 1)
         x += dw + 18
 
-
 def disegna_hud(frame, filtri, filtro_idx, nome_filtro, n_facce, fps_val,
                 registrazione, auto_mode):
-    # entry point: assembla la HUD sopra il frame
     h, w = frame.shape[:2]
     _barra_stato(frame, w, fps_val, n_facce, registrazione, auto_mode)
     _pillola_filtro(frame, w, h, filtri, filtro_idx)
